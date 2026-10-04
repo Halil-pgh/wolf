@@ -5,6 +5,13 @@ agent with a secret role (Werewolf, Doctor, Sheriff or Villager) and its own per
 scheme at night, argue and bluff by day, and vote each other out, while you watch the public chat,
 each agent's private reasoning and the night actions. The rules are in **[RULES.md](RULES.md)**.
 
+![The opening of a recorded game in god view: the wolves Pavel and Jonas agree to kill Silas, Silas the Sheriff investigates Pavel and finds a wolf, Silas is found dead at dawn, and on Day 1 Pavel opens the discussion while the villager Viktor says Pavel is steering it](docs/demo.gif)
+
+*The opening of a recorded 9-player game on Sonnet, replayed in god view. On Night 1 the wolves
+agree to kill Silas. Silas, the Sheriff, investigates Pavel and finds a wolf, but is dead by
+dawn. On Day 1 Pavel opens the discussion, and Viktor, a villager, says Pavel is steering it. The
+village voted Viktor out 7 to 1, both wolves voting with the crowd, and the wolves won on Night 3.*
+
 ## Setup
 
 You need Python 3.12 or newer and [Claude Code](https://claude.com/claude-code), installed and
