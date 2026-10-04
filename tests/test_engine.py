@@ -18,7 +18,7 @@ from wolf.engine import Game, GameAborted
 from wolf.roles import Role, Team
 from wolf.state import Decision, Event, Task
 
-ACTING_KINDS = {"turn", "speech", "ready", "vote", "thought", "wolf_chat", "wolf_pick", "protect", "investigate",
+ACTING_KINDS = {"turn", "speech", "ready", "lean", "vote", "thought", "wolf_chat", "wolf_pick", "protect", "investigate",
                 "defense", "last_words", "fallback"}
 
 
@@ -44,7 +44,7 @@ class TaggedMock(MockBackend):
 
 class Scripted(MockBackend):
     """Discussion turns come from `script(turn, turns) -> dict` (fields to override); every other task is
-    played by the mock. By default a turn has urge 10, a speech, no asks, and isn't ready to vote.
+    played by the mock. By default a turn has urge 10, a speech, no asks, no lean, and isn't ready to vote.
     The first call of a turn gets thought/urge/ready_to_vote/notes; the speech call after the dice
     gets that turn's speech/asks."""
 
@@ -74,10 +74,13 @@ class Scripted(MockBackend):
         self.turns.append(turn)
         self.calls += 1
         plan = {"thought": f"{turn['name']} thinks.", "urge": 10, "speech": f"{turn['name']} speaks.",
-                "asks": [], "ready_to_vote": False, "notes": ""}
+                "asks": [], "ready_to_vote": False, "notes": "", "lean": None}
         plan.update(self.script(turn, self.turns))
         self._planned = plan
-        return {k: plan[k] for k in ("thought", "urge", "ready_to_vote", "notes")}
+        reply = {k: plan[k] for k in ("thought", "urge", "ready_to_vote", "notes")}
+        if plan["lean"] is not None:  # by default the reply has no lean, so nobody leans and nobody defends
+            reply["lean"] = plan["lean"]
+        return reply
 
 
 class ThreadedMock(MockBackend):
@@ -208,11 +211,22 @@ def check_discussions(game: Game) -> None:
             assert not turns and not ends  # the game ended in the morning
             continue
         assert len(ends) == 1 and ends[0].data["reason"] in ("quiet", "ready", "cap")
-        assert talk.index(ends[0]) < min(i for i, e in enumerate(talk) if e.kind == "vote")
+        first_vote = min(i for i, e in enumerate(talk) if e.kind == "vote")
+        assert talk.index(ends[0]) < first_vote
+        trials = [i for i, e in enumerate(talk) if e.kind == "trial"]
+        trial_defenses = [i for i, e in enumerate(talk) if e.kind == "defense" and e.data.get("trial")]
+        assert len(trials) <= 1
+        if trials:
+            assert talk.index(ends[0]) < trials[0] < first_vote
+            assert len(trial_defenses) == len(talk[trials[0]].data["accused"]) in (1, 2)
+            assert all(trials[0] < i < first_vote for i in trial_defenses)
+        else:
+            assert not trial_defenses
         living = len({e.actor for e in talk if e.kind == "vote" and not e.data["runoff"]})
         assert len(turns) <= cfg.day_turns_per_player * living
         assert max(e.data["round"] for e in turns) <= cfg.max_rounds
         spoken: Counter = Counter()
+        leans: dict = {}
         for i, e in enumerate(talk):
             if e.kind == "turn":
                 urge, roll = e.data["urge"], e.data["roll"]
@@ -233,6 +247,10 @@ def check_discussions(game: Game) -> None:
                 assert e.public and "urge" not in e.data and "roll" not in e.data
             elif e.kind == "ready":
                 assert e.public and talk[i - 1].actor == e.actor
+            elif e.kind == "lean":
+                assert e.public and talk[i - 1].actor == e.actor and e.target != e.actor
+                assert leans.get(e.actor) != e.target, f"{e.actor}'s lean didn't change"
+                leans[e.actor] = e.target
         assert max(spoken.values(), default=0) <= cfg.max_speeches
         # replies in a row never pass the chain limit
         run = longest = 0
@@ -526,7 +544,8 @@ def test_tie_then_runoff_eliminates(monkeypatch, seed):
     first, runoff = day1(game, "vote_result")
     a, b = first.data["tied"]
     assert first.target is None and not first.data["runoff"] and first.data["tally"] == {a: 3, b: 3}
-    assert sorted(e.actor for e in day1(game, "defense")) == sorted([a, b])
+    tie_defenses = [e for e in day1(game, "defense") if not e.data.get("trial")]
+    assert sorted(e.actor for e in tie_defenses) == sorted([a, b])
     runoff_votes = [e for e in day1(game, "vote") if e.data["runoff"]]
     assert len(runoff_votes) == 6 and all(e.target in (a, b) and e.target != e.actor for e in runoff_votes)
     assert any(e.data["auto"] for e in runoff_votes)  # the tied players had only one option
@@ -661,8 +680,9 @@ def test_discuss_schema_shape():
     me = game.players[0]
     schema = prompts.schema_for(prompts.discuss_task(game, me))
     props = schema["properties"]
-    assert list(props) == ["thought", "urge", "ready_to_vote", "notes"]  # no speech before the dice
+    assert list(props) == ["thought", "urge", "ready_to_vote", "lean", "notes"]  # no speech before the dice
     assert props["urge"]["type"] == "integer" and props["ready_to_vote"]["type"] == "boolean"
+    assert props["lean"]["enum"] == [p.name for p in game.players if p is not me] + ["nobody"]
     assert schema["required"] == list(props)
     speak = prompts.schema_for(prompts.speak_task(game, me, 7, "my plan", []))
     assert list(speak["properties"]) == ["speech", "asks"] and speak["required"] == ["speech", "asks"]
@@ -1066,3 +1086,131 @@ def test_thoughts_are_asked_for_in_full():
     for name, kind, req in play(3).requests:
         text = req.system + req.prompt + json.dumps(req.schema)
         assert "private reasoning" not in text and "reasoning a moment ago" not in text, kind
+
+
+# --------------------------------------------------------------------------------------------
+# Leans and the defense before the vote (scripted discussion turns)
+# --------------------------------------------------------------------------------------------
+
+def day1_living(game) -> list[str]:
+    """Day 1's living players, in seat order (everyone alive casts a first-round vote)."""
+    voters = {e.actor for e in talk(game, kind="vote") if not e.data["runoff"]}
+    return [p.name for p in game.players if p.name in voters]
+
+
+def trial_defenses(game, day=1):
+    return [e for e in talk(game, day, "defense") if e.data.get("trial")]
+
+
+def lean_on_first(t, ts):
+    return {"lean": min(t["legal"])}  # everyone leans toward the alphabetically first player but themself
+
+
+def test_parse_reply_lean():
+    task = Task(kind="discuss", header="", instructions="", urge=True, leans=["Alice", "Bram"])
+    base = {"urge": 5, "ready_to_vote": False}
+    assert parse_reply(task, {**base, "lean": " bram "}).lean == "Bram"
+    assert parse_reply(task, {**base, "lean": "Nobody"}).lean == ""
+    assert parse_reply(task, base).lean is None  # missing: the lean doesn't change
+    with pytest.raises(ValueError, match="lean"):
+        parse_reply(task, {**base, "lean": "Zed"})
+    with pytest.raises(ValueError, match="lean"):
+        parse_reply(task, {**base, "lean": 3})
+    assert prompts.schema_for(task)["properties"]["lean"]["enum"] == ["Alice", "Bram", "nobody"]
+    assert "lean" not in prompts.schema_for(DISCUSS)["properties"]
+
+
+def test_leans_are_public_and_only_announced_when_they_change():
+    backend = Scripted(lean_on_first, seed=2)
+    game = play(2, backend, players=7, max_days=1)
+    check_invariants(game)
+    leans = talk(game, kind="lean")
+    assert leans and all(e.public for e in leans)
+    assert set(Counter(e.actor for e in leans).values()) == {1}  # the same lean every turn: announced once
+    first = backend.turns[0]
+    later = backend.turns[3]["prompt"]
+    assert f"{first['name']} now leans toward voting out {min(first['legal'])}." in later  # the game log
+    assert "Leans (whom each player would vote out right now): " in later  # the tally in the task
+    votes = [req.prompt for name, kind, req in game.requests if kind == "vote"]
+    assert votes and all("Leans (whom each player would vote out right now): " in p for p in votes)
+
+
+def test_most_named_player_defends_before_the_vote_even_with_no_speeches_left():
+    game = scripted(lean_on_first, players=7, max_days=1, max_speeches=1)
+    living = day1_living(game)
+    accused = min(living)
+    (trial,) = talk(game, kind="trial")
+    assert trial.public and trial.target == accused and trial.data["accused"] == [accused]
+    assert trial.data["tally"][accused] == len(living) - 1
+    assert f"The village turns to {accused}: {len(living) - 1} of {len(living)}" in trial.text
+    (defense,) = trial_defenses(game)
+    assert defense.actor == accused and defense.text and defense.public
+    assert Counter(e.actor for e in talk(game, kind="speech"))[accused] == 1  # their only speech was used up
+    day = [e.kind for e in game.events if e.day == 1 and e.phase == "day"]
+    assert day.index("discussion_end") < day.index("trial") < day.index("defense") < day.index("vote")
+    (req,) = [req for name, kind, req in game.requests if name == accused and kind == "defense"
+              and "# Day 1: your defense before the vote" in req.prompt]
+    leaners = [n for n in living if n != accused]
+    assert f"{prompts.join_names(leaners)} lean toward voting you out." in req.prompt
+    assert "this is the moment to reveal it" in req.prompt
+    others = [req.prompt for name, kind, req in game.requests if kind == "vote"]
+    assert all(f'{accused} (defense before the vote): "' in p for p in others)
+
+
+def test_two_tied_players_both_defend():
+    def split(t, ts):
+        names = sorted(t["legal"] + [t["name"]])
+        a, b, rest = names[0], names[1], names[2:]
+        me = t["name"]
+        if me in (a, b):
+            return {"lean": b if me == a else a}
+        i = rest.index(me)
+        if i == len(rest) - 1 and len(rest) % 2:
+            return {"lean": "nobody"}
+        return {"lean": a if i % 2 == 0 else b}
+
+    game = scripted(split, players=7, max_days=1)
+    a, b = sorted(day1_living(game))[:2]
+    (trial,) = talk(game, kind="trial")
+    assert trial.target is None and sorted(trial.data["accused"]) == [a, b]
+    assert trial.data["tally"][a] == trial.data["tally"][b] == 3 and "split between" in trial.text
+    assert sorted(e.actor for e in trial_defenses(game)) == [a, b]
+
+
+@pytest.mark.parametrize("case", ["three_tied", "single_lean", "no_leans"])
+def test_no_defense_when_nobody_stands_out(case):
+    def three_tied(t, ts):
+        names = sorted(t["legal"] + [t["name"]])
+        a, b, c = names[:3]
+        ring = {a: b, b: c, c: a}
+        if t["name"] in ring:
+            return {"lean": ring[t["name"]]}
+        i = names[3:].index(t["name"])
+        return {"lean": [a, b, c][i] if i < 3 else "nobody"}
+
+    def single_lean(t, ts):
+        return {"lean": t["legal"][0] if t["name"] == ts[0]["name"] else "nobody"}
+
+    script = {"three_tied": three_tied, "single_lean": single_lean, "no_leans": None}[case]
+    game = scripted(script, players=7, max_days=1)
+    assert not talk(game, kind="trial") and not trial_defenses(game)
+    assert not any("your defense before the vote" in req.prompt for name, kind, req in game.requests)
+
+
+def test_playbooks_and_other_side_prompts():
+    game = Game(GameConfig(seed=1), MockBackend(seed=1))
+    by_role = {p.role: p for p in game.players}
+    sheriff, doctor, villager = by_role[Role.SHERIFF], by_role[Role.DOCTOR], by_role[Role.VILLAGER]
+    wolf = next(p for p in game.players if p.is_wolf)
+    assert "ask the Doctor to protect you tonight" in prompts.system_prompt(game, sheriff)
+    assert "Before each protection, put yourself in the wolves' place" in prompts.system_prompt(game, doctor)
+    assert "Every ballot is re-read once a role is revealed" in prompts.system_prompt(game, wolf)
+    assert "After every death, ask who gained from it" in prompts.system_prompt(game, villager)
+    for p in game.players:
+        assert "gets one last defense before the vote" in prompts.system_prompt(game, p)
+    names = [p.name for p in game.players]
+    assert "whom do they expect you to protect?" in prompts.protect_task(game, doctor, names).instructions
+    victims = [p.name for p in game.players if not p.is_wolf]
+    assert "whom will they suspect in the morning" in prompts.wolf_chat_task(game, wolf, victims, first=True).instructions
+    assert "re-read every ballot" in prompts.vote_task(game, wolf, names).instructions
+    assert "if the wolves were steering today's vote" in prompts.vote_task(game, villager, names).instructions

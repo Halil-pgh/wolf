@@ -39,7 +39,7 @@ from .state import Event
 
 # After these kinds the display sleeps `delay` seconds (replays and mock games).
 TALK_KINDS = frozenset(
-    {"speech", "wolf_chat", "vote", "defense", "last_words", "announce", "death", "discussion_end"}
+    {"speech", "wolf_chat", "vote", "defense", "last_words", "announce", "death", "discussion_end", "trial"}
 )
 # Player actions that absorb the pending thought of the same player. ("pass" is from older logs.)
 ACTION_KINDS = frozenset(
@@ -261,7 +261,9 @@ class Display:
             "turn": self._on_turn,
             "speech": self._on_speech,
             "ready": self._on_ready,
+            "lean": self._on_lean,
             "discussion_end": self._on_discussion_end,
+            "trial": self._on_trial,
             "pass": self._on_pass,
             "vote": self._on_vote,
             "vote_result": self._on_vote_result,
@@ -336,7 +338,7 @@ class Display:
             self._generic(e)
         else:
             handler(e, thought)
-        if kind not in ("turn", "speech", "ready"):
+        if kind not in ("turn", "speech", "ready", "lean"):
             self._talker = None
 
     def _flush(self) -> None:
@@ -694,6 +696,25 @@ class Display:
             self._emit(self._icon_line("✋", line), gap=self._talker is not None)
             self._talker = None
 
+    def _on_lean(self, e: Event, _thought) -> None:
+        """'Bram leans toward Greta  (Greta 3 · Nils 1)', placed like a change of readiness."""
+        data = e.data or {}
+        self._subheader(*self._round_label(e))
+        line = self._name(e.actor, emoji=False)
+        if e.target:
+            line.append(" leans toward ", style="italic")
+            line.append_text(self._name(e.target, emoji=False))
+        else:
+            line.append(" leans toward nobody", style="italic")
+        tally = {k: v for k, v in (data.get("tally") or {}).items() if isinstance(v, (int, float))}
+        if tally:
+            line.append("  (" + " · ".join(f"{n} {c}" for n, c in tally.items()) + ")", style="dim")
+        if e.actor is not None and e.actor == self._talker:
+            self._emit(self._block(Text(""), [self._icon_line("👉", line)]))
+        else:
+            self._emit(self._icon_line("👉", line), gap=self._talker is not None)
+            self._talker = None
+
     def _on_discussion_end(self, e: Event, _thought) -> None:
         self._emit(self._icon_line("🔔", Text(_s(e.text).strip() or "Time to vote.", style="bold")), gap=True)
 
@@ -739,23 +760,38 @@ class Display:
             head.append("  (runoff)", style="magenta dim")
         parts: list[RenderableType] = [self._icon_line("⚖️", head)]
         if tally:
-            tied = set(data.get("tied") or [])
-            grid = Table.grid(padding=(0, 1))
-            grid.add_column(no_wrap=True)
-            grid.add_column(no_wrap=True)
-            grid.add_column(no_wrap=True, justify="right")
-            grid.add_column(no_wrap=True)
-            for name, count in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])):
-                seat = self._seat(name)
-                color = seat.color if seat else "white"
-                bar = Text("█" * min(int(count), 30) or "·", style=color)
-                mark = Text("tied", style="yellow dim") if name in tied else Text("")
-                grid.add_row(self._name(name), bar, Text(str(count), style="bold"), mark)
-            parts.append(Padding(grid, (0, 0, 0, 3)))
+            parts.append(self._tally_bars(tally, set(data.get("tied") or []), "tied"))
+        self._emit(Group(*parts), gap=True)
+
+    def _tally_bars(self, tally: dict, marked: set, mark: str) -> RenderableType:
+        grid = Table.grid(padding=(0, 1))
+        grid.add_column(no_wrap=True)
+        grid.add_column(no_wrap=True)
+        grid.add_column(no_wrap=True, justify="right")
+        grid.add_column(no_wrap=True)
+        for name, count in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0])):
+            seat = self._seat(name)
+            color = seat.color if seat else "white"
+            bar = Text("█" * min(int(count), 30) or "·", style=color)
+            tag = Text(mark, style="yellow dim") if name in marked else Text("")
+            grid.add_row(self._name(name), bar, Text(str(count), style="bold"), tag)
+        return Padding(grid, (0, 0, 0, 3))
+
+    def _on_trial(self, e: Event, _thought) -> None:
+        """The defense before the vote: who the village leans toward, with the leans as bars."""
+        data = e.data or {}
+        self._subheader(("defense", e.day, "trial"), "Defense before the vote")
+        tally = {k: v for k, v in (data.get("tally") or {}).items() if isinstance(v, (int, float))}
+        parts: list[RenderableType] = [self._icon_line("🎯", Text(_s(e.text).strip(), style="bold"))]
+        if tally:
+            parts.append(self._tally_bars(tally, set(data.get("accused") or []), "defends"))
         self._emit(Group(*parts), gap=True)
 
     def _on_defense(self, e: Event, thought) -> None:
-        self._subheader(("defense", e.day), "Tie · defenses")
+        if (e.data or {}).get("trial"):
+            self._subheader(("defense", e.day, "trial"), "Defense before the vote")
+        else:
+            self._subheader(("defense", e.day, "tie"), "Tie · defenses")
         said = Text.assemble(("Defense: ", "bold"), _s(e.text).strip() or "…")
         items = self._thought_items(thought) + [said]
         self._emit(self._block(self._label(e.actor), items), gap=True)

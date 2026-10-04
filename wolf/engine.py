@@ -370,6 +370,7 @@ class Game:
     def _day(self) -> None:
         d = self.day
         self._discussion()
+        self._trial()
 
         voters = self.living()
         names = [p.name for p in voters]
@@ -492,6 +493,10 @@ class Game:
         if dec.ready_to_vote is not None:
             talk.ready[p.name] = dec.ready_to_vote
         ready = talk.ready.get(p.name, False)
+        was_lean = talk.leans.get(p.name, "")
+        if dec.lean is not None:
+            talk.leans[p.name] = dec.lean
+        lean = talk.leans.get(p.name, "")
         self.emit("turn", actor=p.name, visible_to=SPECTATOR, urge=urge, roll=roll, spoke=floor,
                   ready_to_vote=ready, round=talk.round, reply_to=reply_to)
 
@@ -509,6 +514,9 @@ class Game:
                 if p.name not in others:
                     others.append(p.name)
             self.emit("speech", said.speech, actor=p.name, round=talk.round, reply_to=reply_to, asks=asks)
+        if lean != was_lean:
+            self.emit("lean", actor=p.name, target=lean or None, round=talk.round,
+                      tally=self._ordered(self._lean_tally()))
         if ready != was_ready:
             living = self.living()
             self.emit("ready", actor=p.name, ready=ready, round=talk.round, living=len(living),
@@ -517,6 +525,39 @@ class Game:
 
     def _most_ready(self, living: list[Player]) -> bool:
         return 2 * sum(self.discussion.ready.get(p.name, False) for p in living) > len(living)
+
+    def _lean_tally(self) -> Counter:
+        """How many living players lean toward each player right now."""
+        leans = self.discussion.leans
+        return Counter(leans[p.name] for p in self.living() if leans.get(p.name))
+
+    def _trial(self) -> None:
+        """Before the vote, the player most players lean toward (at least 2) gets a defense, even with no
+        speeches left; two players tied for most both defend, and 3 or more tied means nobody stands out.
+        No replies: the vote follows at once."""
+        tally = self._lean_tally()
+        if not tally:
+            return
+        top = max(tally.values())
+        accused = [p.name for p in self.living() if tally[p.name] == top]  # seat order
+        if top < 2 or len(accused) > 2:
+            return
+        living = len(self.living())
+        if len(accused) == 1:
+            (name,) = accused
+            text = (f"The village turns to {name}: {top} of {living} lean toward voting them out. "
+                    f"Before the vote, {name} may speak in their defense.")
+        else:
+            text = (f"The village is split between {prompts.join_names(accused)}, with {top} leaning toward "
+                    "each. Before the vote, both may speak in their defense.")
+        self.emit("trial", text, target=accused[0] if len(accused) == 1 else None, accused=accused,
+                  tally=self._ordered(tally))
+        order = [self.by_name[n] for n in accused]
+        self.rng.shuffle(order)
+        for p in order:
+            task = prompts.trial_task(self, p, accused)
+            dec = self._ask(p, task, f"💬 {p.name} is preparing a defense…")
+            self.emit("defense", dec.speech, actor=p.name, trial=True)
 
     def _votes(self, jobs: list[tuple[Player, Task]], runoff: bool, text: str) -> Counter:
         tally: Counter = Counter()

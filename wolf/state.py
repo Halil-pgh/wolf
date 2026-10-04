@@ -79,6 +79,7 @@ class Task:
     speech_words: int | None = None  # if set, the reply needs "speech" of at most this many words
     reason_words: int | None = None  # if set, the reply needs a short public "reason"
     urge: bool = False  # discussion turn: the reply needs "urge" (0-10) and "ready_to_vote"
+    leans: list[str] | None = None  # if set, the reply needs "lean": one of these names, or "nobody"
     asks: list[str] | None = None  # if set, the reply needs "asks", a list of these names
     private_fields: bool = True  # the reply has "thought" and "notes" (not when speaking after the dice)
 
@@ -100,6 +101,7 @@ class Decision:
     urge: int | None = None  # discussion: 0-10, the chance of getting the floor, in tenths
     asks: list[str] = field(default_factory=list)  # speech after the dice: players expected to answer next
     ready_to_vote: bool | None = None  # discussion: None = no change (e.g. a fallback)
+    lean: str | None = None  # discussion: whom they'd vote for now; "" = nobody; None = no change
     auto: bool = False  # chosen without calling the model (only one legal option)
     fallback: bool = False  # every attempt failed; a random legal choice was made
     backend_error: bool = False  # the fallback was caused by backend failures, not bad replies
@@ -114,6 +116,7 @@ class Discussion:
     round: int = 0
     spoken: dict[str, int] = field(default_factory=dict)  # name -> speeches heard today
     ready: dict[str, bool] = field(default_factory=dict)  # name -> latest ready_to_vote
+    leans: dict[str, str] = field(default_factory=dict)  # name -> whom they'd vote for now ("" = nobody)
     asked_by: dict[str, list[str]] = field(default_factory=dict)  # name -> who asked them, until their next turn
     hesitated: set[str] = field(default_factory=set)  # wanted to speak on their last turn, but didn't get the floor
 

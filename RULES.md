@@ -83,6 +83,9 @@ Sheriff can't investigate themself, and can't investigate the same player twice.
      had, it's an extra turn. After **3 replies in a row**, the round carries on as normal.
    - **Ready to vote.** On every turn, each player also says whether they have heard enough, and
      everyone sees who is ready, even when that player stays quiet.
+   - **Leans.** On every turn, each player also says whom they would vote for if the vote were
+     now, or nobody. Leans are public too: everyone sees each player's latest lean, like a running
+     straw poll, so the village can spot who jumped onto a target early or who always leans together.
    - **Who has talked.** Everyone can see who has spoken today, how often, and who has stayed
      silent. Nobody ever sees anyone's urge.
    - **The end.** The discussion ends as soon as one of these happens:
@@ -92,17 +95,23 @@ Sheriff can't investigate themself, and can't investigate the same player twice.
      - a safety cap is reached: at most **4 rounds** a day, at most **4 speeches** per player per day
        (replies included), and at most 5 turns per living player in all.
 
-3. **Vote.** Everyone votes at the same time, without seeing anyone else's ballot. Each player must
+3. **Defense before the vote.** When the discussion ends, the player most players lean toward
+   (at least 2 of them) gets one last speech of up to about 60 words, even if they have used up
+   their speeches. It's the moment to reveal a role before it's too late. If two players are tied
+   for most, both defend; if three or more are tied, nobody stands out and there is no defense.
+   Then the vote follows at once, with no more talk.
+
+4. **Vote.** Everyone votes at the same time, without seeing anyone else's ballot. Each player must
    vote for one living player other than themself and give a one-line reason. **Nobody may abstain.**
    Then every ballot is revealed, for example *"Alice → Bram: dodged every question."*
 
-4. **Result.** The player with the most votes is eliminated.
+5. **Result.** The player with the most votes is eliminated.
    - **On a tie**, each tied player gives a short defense, and then everyone votes again, choosing
      **only among the tied players**. A tied player can't vote for themself. If a player has only one
      legal choice, as a tied player does in a two-way tie, their vote is cast for them automatically.
    - **If the runoff is also tied**, nobody is eliminated that day.
 
-5. **Last words.** The eliminated player makes a final statement of up to about 50 words, and then
+6. **Last words.** The eliminated player makes a final statement of up to about 50 words, and then
    their role is revealed. Only players voted out by day get last words; night victims don't.
 
 The game checks for a winner and moves on to the next Night.
@@ -116,7 +125,7 @@ player's view is built only from what that player is allowed to see.
 
 | | What they see |
 |---|---|
-| **Everyone** | Every day speech, who is ready to vote, every ballot and its reason, the morning news, defenses and last words, and the role of every dead player. |
+| **Everyone** | Every day speech, who is ready to vote, whom each player leans toward, every ballot and its reason, the morning news, defenses and last words, and the role of every dead player. |
 | **Only you** | Your own role, your personality, and your own private notes. |
 | **Wolves, also** | Who their partner is, and everything said in the wolves' chat. |
 | **The Sheriff, also** | Their own investigation results. |
@@ -209,6 +218,10 @@ She named Dmitri, so he answers next: *"She's lying, and she knows it."* When Al
 she counterclaims: *"No, **I'm** the Sheriff, and I checked Elena. **She's** the wolf."* Now the
 village has two Sheriff claims, and only one of them can be real. Four of the six players say
 they are ready to vote, which is more than half, so the discussion ends.
+
+**Defense before the vote.** The leans are split, three toward Dmitri and three toward Elena, so
+both get a last word. Dmitri: *"Two Sheriffs, and Elena spoke first to look honest."* Elena:
+*"Protect me tonight, Doctor, and I'll prove it in the morning."*
 
 **Vote.**
 

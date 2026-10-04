@@ -94,6 +94,9 @@ def parse_reply(task: Task, reply: object, speaker: str | None = None) -> Decisi
         dec.urge = _urge(reply.get("urge"))
         dec.ready_to_vote = _flag(reply.get("ready_to_vote"))
 
+    if task.leans is not None:
+        dec.lean = _lean(reply.get("lean"), task.leans)
+
     if task.speech_words is not None:
         speech = reply.get("speech")
         if not isinstance(speech, str):
@@ -144,6 +147,24 @@ def _flag(value: object) -> bool | None:
     if value is None or isinstance(value, bool):
         return value
     raise ValueError('"ready_to_vote" must be true or false')
+
+
+_NO_LEAN = {"", "nobody", "no one", "none", "no lean"}
+
+
+def _lean(value: object, legal: list[str]) -> str | None:
+    """A legal name, canonical; "" for nobody; None when missing, so the player's lean doesn't change."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError('"lean" must be a player\'s name or "nobody"')
+    key = _unquote(value).casefold()
+    if key in _NO_LEAN:
+        return ""
+    canonical = {t.casefold(): t for t in legal}
+    if key not in canonical:
+        raise ValueError(f'"lean" must be one of {", ".join(legal)} or "nobody", not {value!r}')
+    return canonical[key]
 
 
 def _names(value: object, legal: list[str]) -> list[str]:

@@ -348,7 +348,7 @@ class _Markdown:
         elif kind == "death":
             fate = f" ({_inline(data.get('fate'))})" if data.get("fate") else ""
             self.block(f"**💀 {e.target} was the {_role_label(data.get('role'))}**{fate}")
-        elif kind in ("speech", "pass", "turn", "ready"):
+        elif kind in ("speech", "pass", "turn", "ready", "lean"):
             rnd = data.get("round")
             self.subheading(("talk", e.day, rnd), f"🗣️ Discussion · round {rnd}" if rnd else "🗣️ Discussion")
             if kind == "turn" and data.get("spoke"):
@@ -373,11 +373,18 @@ class _Markdown:
                 state = "is ready to vote" if data.get("ready") else "is no longer ready to vote"
                 count = f" ({data['count']} of {data['living']} ready)" if "count" in data and "living" in data else ""
                 self.block(f"*✋ {e.actor} {state}{count}.*")
+            elif kind == "lean":
+                tally = data.get("tally") or {}
+                counts = f" ({', '.join(f'{n} {c}' for n, c in tally.items())})" if tally else ""
+                self.block(f"*👉 {e.actor} leans toward {e.target or 'nobody'}{counts}.*")
             else:
                 self.quote_thought(thought)
                 self.block(f"*{e.actor} stays silent.*")
         elif kind == "discussion_end":
             self.block(f"**🔔 {_inline(e.text)}**")
+        elif kind == "trial":
+            self.subheading(("defense", e.day, "trial"), "🎯 Defense before the vote")
+            self.block(f"**{_inline(e.text)}**")
         elif kind == "vote":
             runoff = bool(data.get("runoff"))
             self.subheading(("vote", e.day, runoff), "🔁 Runoff vote" if runoff else "🗳️ Vote")
@@ -387,7 +394,10 @@ class _Markdown:
         elif kind == "vote_result":
             self.block(f"**⚖️ {_inline(e.text)}**" + (" *(runoff)*" if data.get("runoff") else ""))
         elif kind == "defense":
-            self.subheading(("defense", e.day), "🛡️ Defenses")
+            if data.get("trial"):
+                self.subheading(("defense", e.day, "trial"), "🎯 Defense before the vote")
+            else:
+                self.subheading(("defense", e.day, "tie"), "🛡️ Tie · defenses")
             self.quote_thought(thought)
             self.block(f"{self.who(e.actor)} *(defense)*: {_inline(e.text)}")
         elif kind == "last_words":

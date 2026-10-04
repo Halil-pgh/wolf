@@ -78,8 +78,13 @@ def _rules(game: "Game") -> str:
         "- Each day the village talks before it votes. The discussion goes in rounds: in each round every living "
         "player gets a turn, in a fresh random order, and either speaks up or keeps quiet. Anyone asked a direct "
         f"question gets to answer right away, out of turn. Nobody may speak more than {times} a day.",
+        "- On every turn, each player also says whom they would vote for if the vote were now (their \"lean\"), or "
+        "nobody. Leans are public: everyone sees each player's latest lean, even when that player stays quiet.",
         "- The discussion ends when a whole round goes by in silence, when more than half of the living players "
         f"are ready to vote (but not before everyone has had a first turn), or after at most {rounds}.",
+        "- When the discussion ends, the player most people lean toward (at least 2 of them) gets one last defense "
+        "before the vote, even if they have used up their speeches; if two players are tied for most, both defend. "
+        "Then the vote follows at once, with no more talk.",
         "- Then everyone votes at the same time to eliminate one living player. Nobody may abstain, and every "
         "ballot is revealed along with its reason. The player with the most votes says their last words and is eliminated.",
         "- If the vote is tied, each tied player gives a short defense, then everyone votes again among the tied "
@@ -112,14 +117,26 @@ def _role_brief(game: "Game", player: Player) -> str:
         ]
         mate = "packmate" if len(mates) == 1 else "packmates"
         if mates:
-            tactics.append(
-                f"- Don't over-defend your {mate}: wolves who always protect each other get caught together. "
-                "If a packmate is doomed, voting against them can buy you trust."
-            )
+            tactics += [
+                f"- Every ballot is re-read once a role is revealed. If you and your {mate} pile onto the same villager, "
+                "above all one who was accusing one of you, the village will look hard at you together once that "
+                "villager's role is revealed. Spread out: lean and vote on different players when you can, and let "
+                "villagers lead.",
+                f"- Don't over-defend your {mate}: wolves who protect each other get caught together. If a packmate is "
+                "exposed or doomed, keep your distance or vote against them: one trusted wolf is worth more than two "
+                "suspected ones.",
+            ]
         tactics += [
-            "- Fake claims are allowed. You may claim to be the Sheriff (with invented results) or the Doctor, "
-            "for example to discredit a real claim, but the real one may expose you.",
-            "- At night, kill whoever threatens you most: a likely Sheriff or Doctor, or the most persuasive villagers.",
+            "- At night, kill whoever threatens you most (a likely Sheriff or Doctor, or the most persuasive villager), "
+            "but think about how the kill will look in the morning, when the village asks who gained from it. Killing "
+            "the player who was accusing you points straight back at you, while killing someone who suspected a "
+            "villager can make that villager look guilty. The most obvious target is also the one the Doctor is most "
+            "likely to protect, and a morning where nobody died makes the player you attacked look trustworthy.",
+            "- A revealed Sheriff is your biggest danger: kill them on a night the Doctor is unlikely to be protecting "
+            f"them, or discredit them. If a Sheriff names {'one of you' if mates else 'you'}, a counter-claim is often "
+            "the only way out: claim Sheriff yourself, with invented results that fit what the village has seen"
+            + (", and agree in the wolf den who claims." if mates else ".")
+            + " You can also claim Doctor when you are about to be voted out, but the real one may expose you.",
             "- NEVER reveal that you are a werewolf in public speech, and never mention the wolf den there"
             + (f" or give away your {mate}." if mates else ".")
             + " Only the wolf den is private.",
@@ -147,10 +164,20 @@ def _role_brief(game: "Game", player: Player) -> str:
                 "player two nights in a row, and you can protect yourself only once per game.",
                 "How to play:",
                 f"- You are never told whether a protection worked. But when the morning brings \"nobody died\", {nobody_died}.",
-                "- Protect whoever the wolves most want dead: a claimed or likely Sheriff, the sharpest villager, "
-                "or yourself when you are exposed.",
-                "- Revealing that you are the Doctor makes you a wolf target. Stay hidden unless revealing helps a lot, "
-                "for example to confirm a save or to stop the village eliminating an innocent.",
+                "- Before each protection, put yourself in the wolves' place. Whom do they most want dead tonight: a "
+                "revealed Sheriff, the villager closest to catching them, or someone whose death would make another "
+                "player look guilty? And whom do they expect you to protect? Clever wolves avoid the obvious target, "
+                "so weigh both.",
+                "- A believable Sheriff claim comes first: protect the Sheriff. You can't protect them two nights in a "
+                "row, so expect the wolves to try on the night in between.",
+                "- Don't spend your one self-protection on Night 1 without a reason: keep it for a night when you are "
+                "exposed or the obvious target.",
+                "- Reveal your role when it helps the village: when you are about to be voted out (your defense before "
+                "the vote is the moment), to confirm a save (\"nobody died: I protected X\"), or to back up a Sheriff "
+                "you have been protecting. Once you reveal, the wolves will come for you, so that is the night for "
+                "your self-protection.",
+                "- You don't have to say what you are until you reveal. If you claim to be a plain villager first, "
+                "expect to be asked why you lied.",
                 "- By day, reason and vote like a villager: look for contradictions and suspicious vote patterns.",
             ]
         )
@@ -168,16 +195,27 @@ def _role_brief(game: "Game", player: Player) -> str:
                 "Each night you investigate one living player you haven't investigated before (never yourself) and "
                 "privately learn whether they are a werewolf.",
                 "How to play:",
-                "- Your results are 100% reliable. You know things nobody else knows; use them.",
-                f"- The wolves may fake-claim Sheriff to confuse the village. {lie}",
-                "- Timing your reveal matters. Once you reveal, the wolves will try to kill you, so reveal when it counts: "
-                "when you have found a wolf, when the village is about to eliminate someone you know is innocent, "
-                "or when you are about to be voted out.",
-                "- You can also steer votes without revealing, by vouching for players you cleared or pressing hard on a wolf you found.",
+                "- Your results are 100% reliable. You know things nobody else knows, but they only help the village "
+                "once you share them.",
+                "- Lean toward revealing early, on Day 1 or Day 2: say you are the Sheriff, give every result so far, "
+                "and ask the Doctor to protect you tonight (the Doctor should stay hidden and needn't answer). A "
+                "protected Sheriff can report a new result every morning.",
+                "- When you reveal, you can also say whom you will investigate tonight and why, so the village waits "
+                "for that result.",
+                "- Found a wolf? Reveal at once, name them, and push the vote onto them.",
+                "- About to be voted out? Reveal in your defense before the vote at the latest: a Sheriff who dies "
+                "hidden helps only the wolves.",
+                f"- The wolves may fake-claim Sheriff to counter you. {lie} Answer a counter-claim with your results "
+                "and the timing: who claimed first, and whose results fit the deaths.",
+                "- Investigate whoever's result would change the village's vote the most: a player leading a vote, "
+                "someone the village is about to trust or eliminate, or someone you can't read. Don't waste a check "
+                "on someone the wolves are likely to kill tonight.",
                 "- Never vote for anyone else while a wolf you found is alive: every vote you spend elsewhere helps the wolves. "
                 "Vote for your wolf even if you stay hidden.",
                 "- Don't take your secret to the grave. If \"The stakes\" says a wrong vote today could lose the game, reveal "
                 "your results now: hiding them then only helps the wolves.",
+                "- You don't have to say what you are until you reveal. If you claim to be a plain villager first, "
+                "expect to be asked why you lied.",
             ]
         )
 
@@ -187,11 +225,18 @@ def _role_brief(game: "Game", player: Player) -> str:
             f"You are a VILLAGER, on the village team: {village_goal} You have no night power; "
             "your weapons are reasoning, persuasion and your vote.",
             "How to play:",
-            "- Look for contradictions: people who change their story, defend each other too eagerly, or push votes without reasons.",
-            "- Study vote patterns. When a player dies, their revealed role shows who was right about them. "
-            "Wolves rarely vote against each other and like to pile onto villagers.",
-            "- Claims may be lies. A Sheriff claim is valuable, but a wolf can make one too: weigh every claim against "
-            "the evidence and against counter-claims.",
+            "- Look for contradictions: people who change their story, defend each other too eagerly, push votes "
+            "without reasons, or claim a role that doesn't fit what they said before.",
+            "- After every death, ask who gained from it. The wolves chose the night's victim: whom were they "
+            "silencing, and whom did the death make look guilty?",
+            "- Study vote patterns and leans. When a player dies, their revealed role shows who was right about them. "
+            "Wolves rarely vote against each other, like to pile onto villagers, and often lean the same way.",
+            "- Push for claims when they help: when a wrong vote could lose the game, ask the players under suspicion "
+            "what they are. Anyone with a role who is about to be voted out should reveal it.",
+            "- A revealed Sheriff is the village's best weapon, but a wolf can claim it too: weigh every claim against "
+            "the evidence and any counter-claim (two Sheriff claims mean one is a wolf). If a claim holds up, follow "
+            "its results and help keep that player alive.",
+            "- Don't fake-claim a role yourself: it confuses the village and can get the real one killed.",
             "- Don't split the vote. The wolves vote together, so the village has to agree to win.",
         ]
     )
@@ -288,7 +333,8 @@ def _stakes_section(game: "Game") -> str | None:
         )
         urgent = False
     if urgent:
-        lines.append("- Anyone holding hard information should use it now; there is no later.")
+        lines.append("- Anyone holding hard information or a role should reveal it now, and anyone about to be voted "
+                     "out should say what they are; there is no later.")
     return "\n".join(lines)
 
 
@@ -411,6 +457,8 @@ def log_line(event: Event) -> str | None:
         state = "is ready to vote" if e.data.get("ready") else "is no longer ready to vote"
         count = f" ({e.data['count']} of {e.data['living']} are ready.)" if "count" in e.data and "living" in e.data else ""
         return f"{e.actor} {state}.{count}"
+    if k == "lean":
+        return f"{e.actor} now leans toward voting out {e.target}." if e.target else f"{e.actor} now leans toward nobody."
     if k == "vote":
         prefix = "(runoff) " if e.data.get("runoff") else ""
         reason = e.data.get("reason") or ""
@@ -422,7 +470,8 @@ def log_line(event: Event) -> str | None:
         label = "Runoff result" if e.data.get("runoff") else "Vote result"
         return f"{label}: {e.text}"
     if k == "defense":
-        return f'{e.actor} (defense): "{e.text}"' if e.text else f"{e.actor} (defense) said nothing."
+        label = "defense before the vote" if e.data.get("trial") else "defense"
+        return f'{e.actor} ({label}): "{e.text}"' if e.text else f"{e.actor} ({label}) said nothing."
     if k == "last_words":
         return f'{e.actor} (last words): "{e.text}"' if e.text else f"{e.actor} left without a word."
     # announce, death, and anything unknown: the text reads on its own.
@@ -487,6 +536,13 @@ def schema_for(task: Task) -> dict:
             "description": "true if you have heard enough and want the vote to start; false if you want more "
             "discussion. Everyone sees who is ready.",
         }
+    if task.leans is not None:
+        props["lean"] = {
+            "type": "string",
+            "enum": [*task.leans, "nobody"],
+            "description": 'Whom you would vote to eliminate if the vote were now, or "nobody" if you have no lean '
+            "yet. Everyone sees it.",
+        }
     if task.reason_words is not None:
         props["reason"] = {
             "type": "string",
@@ -514,6 +570,48 @@ _WOLF_REMINDER = " Remember: never reveal that you are a werewolf."
 
 def _task(kind: str, header: str, text: str, **kw) -> Task:
     return Task(kind=kind, header=header, instructions=text + _PRIVATE_FIELDS, **kw)
+
+
+def _packmates_alive(game: "Game", player: Player) -> bool:
+    return any(p.is_wolf and p.alive and p is not player for p in game.players)
+
+
+def leans_line(game: "Game", player: Player) -> str:
+    """Today's public leans, most-named first, e.g. 'Greta: 3 (Mira, Nils and you); Nils: 1 (Tilda). No lean: Bram.'"""
+    talk = game.discussion
+    seat = {p.name: i for i, p in enumerate(game.players)}
+
+    def who(name: str) -> str:
+        return "you" if name == player.name else name
+
+    by_target: dict[str, list[str]] = {}
+    none = []
+    for p in game.living():
+        if target := talk.leans.get(p.name):
+            by_target.setdefault(target, []).append(who(p.name))
+        else:
+            none.append(who(p.name))
+    if not by_target:
+        return "Leans (whom each player would vote out right now): nobody leans toward anyone yet."
+    ranked = sorted(by_target.items(), key=lambda kv: (-len(kv[1]), seat[kv[0]]))
+    parts = "; ".join(f"{who(target)}: {len(names)} ({join_names(names)})" for target, names in ranked)
+    text = f"Leans (whom each player would vote out right now): {parts}."
+    if none:
+        text += f" No lean: {join_names(none)}."
+    return text
+
+
+def _other_side(game: "Game", player: Player) -> str:
+    """A nudge to look at the table from the other team's side (and for a Sheriff, whether to reveal)."""
+    if player.is_wolf:
+        us = "you or your packmate" if _packmates_alive(game, player) else "you"
+        return (f"Look at the table the way the village sees it: who suspects {us}, and what would a real villager "
+                "say in your place?")
+    text = "Look at it from the wolves' side too: whom would they want eliminated today, and who is helping that happen?"
+    if player.role is Role.SHERIFF:
+        text += (" And if you haven't revealed yet, ask yourself whether now is the time: your results only help "
+                 "the village once it hears them.")
+    return text
 
 
 def discuss_task(game: "Game", player: Player, reply_to: str | None = None) -> Task:
@@ -563,6 +661,7 @@ def discuss_task(game: "Game", player: Player, reply_to: str | None = None) -> T
         lines.append(f"Ready to vote: {join_names(ready)} ({len(ready)} of {len(living)}; the vote starts once {needed} are ready).")
     else:
         lines.append(f"Nobody is ready to vote yet; the vote starts once {needed} of {len(living)} are ready.")
+    lines.append(leans_line(game, player))
     left = cfg.max_speeches - talk.spoken.get(player.name, 0)
     if left == cfg.max_speeches:
         lines.append(f"You can speak at most {'once' if left == 1 else f'{left} times'} today.")
@@ -575,7 +674,7 @@ def discuss_task(game: "Game", player: Player, reply_to: str | None = None) -> T
         "",
         "First decide whether you want to speak. Don't write a speech yet:",
         '- In "thought", let your inner voice weigh it up: what has been said, what you would say and to whom, and '
-        "whether speaking up now helps your team.",
+        f"whether speaking up now helps your team. {_other_side(game, player)}",
         '- "urge", from 0 to 10, is your chance of getting the floor this turn: 7 means a 70% chance, 10 means you '
         "surely get it, and 0 means you stay quiet. Use this scale:",
         "  - 10: someone asked you a direct question, or accused you by name.",
@@ -586,10 +685,14 @@ def discuss_task(game: "Game", player: Player, reply_to: str | None = None) -> T
         f"  - 0: you have nothing to say, or you want to stay out of it. {quiet}, but people notice who never talks.",
         '- "ready_to_vote": true if you have heard enough and want the vote to start now, false if you want more '
         "discussion first. Everyone sees who is ready, even if you stay quiet, and you can change your mind on any turn.",
+        '- "lean": whom you would vote to eliminate if the vote were now, or "nobody" if you have no lean yet. '
+        "Everyone sees it, even if you stay quiet, and you can change it on any turn. When the talk ends, the player "
+        "most people lean toward gets a last defense before the vote.",
         "If you get the floor, you will be asked for your speech right after this, and everyone will hear it. "
         "If you don't, nobody hears from you this turn.",
     ]
-    return _task("discuss", f"Day {d}, discussion round {rnd}", "\n".join(lines), urge=True)
+    others = [p.name for p in living if p is not player]
+    return _task("discuss", f"Day {d}, discussion round {rnd}", "\n".join(lines), urge=True, leans=others)
 
 
 def speak_task(game: "Game", player: Player, urge: int, thought: str, askers: list[str],
@@ -636,8 +739,11 @@ def wolf_chat_task(game: "Game", player: Player, targets: list[str], first: bool
             "but argue for a different one if you have a better reason."
         )
     text += (
+        " Before you name a victim, look at it from the village's side: whom will they suspect in the morning after "
+        "this death, and whom is the Doctor most likely protecting tonight?"
         f' In "speech" (at most {cfg.wolf_chat_words} words), tell your pack who should die tonight and why, '
-        "and share plans for tomorrow: whom to push suspicion onto, and whether anyone should fake-claim a role. "
+        "and share plans for tomorrow: which of you is under more suspicion and how the other keeps their distance, "
+        "whom to push suspicion onto, and whether anyone should fake-claim a role, for example to counter a Sheriff. "
         f'Put the player you propose to kill in "target", one of: {", ".join(targets)}.'
     )
     return _task(
@@ -660,7 +766,9 @@ def wolf_pick_task(game: "Game", player: Player, targets: list[str], pack: bool)
         alone = "the only werewolf left" if game.config.wolves > 1 else "the only werewolf"
         text = (
             f'It is Night {n}, and you are {alone}. Choose tonight\'s victim in "target", one of: {options}. '
-            "Kill whoever threatens you most: a likely Sheriff or Doctor, or the most persuasive villager."
+            "Kill whoever threatens you most: a likely Sheriff or Doctor, or the most persuasive villager. But first "
+            "look at it from the village's side: whom will they suspect in the morning after this death, and whom is "
+            "the Doctor most likely protecting tonight?"
         )
         header = f"Night {n}: choose a victim"
     return _task("wolf_pick", header, text, targets=list(targets))
@@ -682,6 +790,8 @@ def protect_task(game: "Game", player: Player, targets: list[str]) -> Task:
             text += " You have already used your one self-protection."
         else:
             text += " You may protect yourself, but only once per game."
+    text += (" Before you choose, put yourself in the wolves' place: whom do they most want dead tonight, and whom "
+             "do they expect you to protect?")
     return _task("protect", f"Night {n}: protect someone", text, targets=list(targets))
 
 
@@ -689,7 +799,9 @@ def investigate_task(game: "Game", player: Player, targets: list[str]) -> Task:
     n = game.day
     text = (
         f"It is Night {n}. Choose one player to investigate tonight: put their name in \"target\", "
-        f"one of: {', '.join(targets)}. Before morning you will learn whether they are a werewolf."
+        f"one of: {', '.join(targets)}. Before morning you will learn whether they are a werewolf. "
+        "Choose whoever's result would change the village's vote the most, and think about what you will do with "
+        "the answer tomorrow."
     )
     return _task("investigate", f"Night {n}: investigate someone", text, targets=list(targets))
 
@@ -701,9 +813,15 @@ def vote_task(game: "Game", player: Player, targets: list[str]) -> Task:
         f'one of: {", ".join(targets)}. Give a one-line public reason in "reason" (at most {cfg.reason_words} words). '
         "Everyone votes at the same time, and afterwards every ballot and its reason are revealed. "
         "The player with the most votes is eliminated; a tie leads to a defense and a runoff."
+        f"\n{leans_line(game, player)}\n"
     )
     if player.is_wolf:
-        text += " Your reason is public, so don't give yourself away."
+        tie = "doesn't tie you to your packmate" if _packmates_alive(game, player) else "doesn't give you away"
+        text += (f"Before you choose, picture tomorrow: once this player's role is revealed, the village will re-read "
+                 f"every ballot, so make sure yours {tie}. Your reason is public, so don't give yourself away.")
+    else:
+        text += ("Before you choose, ask yourself: if the wolves were steering today's vote, whom would they want "
+                 "gone? Whose story holds up, and who has pushed without reasons?")
     return _task("vote", f"Day {d}: the vote", text, targets=list(targets), reason_words=cfg.reason_words)
 
 
@@ -733,6 +851,28 @@ def defense_task(game: "Game", player: Player, tied: list[str]) -> Task:
     if player.is_wolf:
         text += _WOLF_REMINDER
     return _task("defense", f"Day {d}: your defense", text, speech_words=cfg.defense_words)
+
+
+def trial_task(game: "Game", player: Player, accused: list[str]) -> Task:
+    """The defense before the vote, for the player most people lean toward (or each of two tied ones)."""
+    cfg, d = game.config, game.day
+    leaners = [p.name for p in game.living() if game.discussion.leans.get(p.name) == player.name]
+    others = [n for n in accused if n != player.name]
+    text = (
+        "The discussion is over, and the vote comes next. The village has its eyes on you: "
+        f"{join_names(leaners)} {'leans' if len(leaners) == 1 else 'lean'} toward voting you out."
+    )
+    if others:
+        text += f" {join_names(others)} is just as much in the spotlight and defends too."
+    text += (
+        f' Before the vote, you get one last word: make your defense in "speech" (at most {cfg.defense_words} '
+        "words). Nobody can answer you before the vote, so make it count, and you can't stay silent now. If you hold "
+        "a role or information that could save you or the village, this is the moment to reveal it: once you are "
+        "voted out, it is too late."
+    )
+    if player.is_wolf:
+        text += " You may claim a role to save yourself, but the real one may expose you tomorrow." + _WOLF_REMINDER
+    return _task("defense", f"Day {d}: your defense before the vote", text, speech_words=cfg.defense_words)
 
 
 def last_words_task(game: "Game", player: Player) -> Task:

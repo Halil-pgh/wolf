@@ -106,6 +106,8 @@ class MockBackend:
                 match = _ROUND_RE.search(prompt)
                 rnd = int(match.group(1)) if match else 1
                 reply[key] = rng.random() < 0.15 + 0.25 * (rnd - 1)
+            elif key == "lean":
+                reply[key] = rng.choice(spec["enum"])
             elif key == "reason":
                 reply[key] = rng.choice(_REASONS)
             elif key == "thought":

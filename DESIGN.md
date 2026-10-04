@@ -84,6 +84,7 @@ Only the main thread reads or mutates game state or emits events. `Agent.execute
 
 ## Event catalog
 The `visible_to` column uses these values: **public** is `None`, **spectator** is `()`, **pack** is the tuple of living wolf names, and **self** is `(actor,)`. The display renders events from their structured fields. It prints `text` verbatim only for these kinds: `phase`, `announce`, `vote_result`, `discussion_end`, `fallback`, `game_over` and `aborted`.
+Logs from before 2026-10-02 have no `lean` or `trial` events, and every `defense` in them is a tie's.
 Logs from before the urge-to-speak discussion (2026-10-01) also hold `pass` events (a silent player, with `round`); the display and the Markdown transcript still render them, so old games replay.
 
 | kind | visible_to | actor | target | text | data |
@@ -103,10 +104,12 @@ Logs from before the urge-to-speak discussion (2026-10-01) also hold `pass` even
 | `turn` | spectator | player | | "" | `urge`: 0–10; `roll`: 1–10; `spoke`: bool, got the floor (`roll <= urge`), so a `speech` follows unless the speech call failed; `ready_to_vote`: bool; `round`: int; `reply_to`: asker or None |
 | `speech` | public | player | | what they said | `round`: int; `reply_to`: asker or None (an out-of-turn reply); `asks`: [names] |
 | `ready` | public | player | | "" | `ready`: bool (their new readiness); `count`: how many living players are ready; `living`: int; `round`: int |
+| `lean` | public | player | whom they lean toward, or None for nobody | "" | `round`: int; `tally`: {name: count} of the living players' leans now, most first |
 | `discussion_end` | public | | | why the talk ended, e.g. "A quiet moment falls over the village. Time to vote." | `reason`: "quiet" / "ready" / "cap"; `round`: the last round |
+| `trial` | public | | the accused, or None when two are tied | e.g. "The village turns to Bram: 4 of 7 lean toward voting them out. …" | `accused`: [1 or 2 names]; `tally`: {name: count} |
 | `vote` | public | voter | voted-for | "" | `reason`: str; `runoff`: bool; `auto`: bool |
 | `vote_result` | public | | eliminated or None | e.g. "Bram 3, Alice 2 · Bram is eliminated." | `tally`: {name: count}; `tied`: [names]; `runoff`: bool |
-| `defense` | public | tied player | | their defense | |
+| `defense` | public | defender | | their defense | `trial`: true for the defense before the vote (absent on a tie's defense) |
 | `last_words` | public | eliminated | | their last words | |
 | `game_over` | public | | | e.g. "All werewolves are dead. The village wins!" | `winner`: "village" / "wolves" / None; `roles`: {name: role}; `fates`: {name: fate or None} |
 | `aborted` | public | | | why the game stopped | |
@@ -124,15 +127,16 @@ Logs from before the urge-to-speak discussion (2026-10-01) also hold `pass` even
    - or `announce` + `death`.
 4. **Win check.**
 5. **Discussion:** rounds around the table, each in a fresh random order. A turn is two steps:
-   - A `discuss` call returns `thought`, `urge` (0–10), `ready_to_vote` and `notes`, and no speech. The engine emits `thought`, rolls 1–10 with `game.rng`, and emits `turn`; the player gets the floor if the roll ≤ urge.
+   - A `discuss` call returns `thought`, `urge` (0–10), `ready_to_vote`, `lean` (a living player other than themself, or "nobody") and `notes`, and no speech. A missing `lean` leaves the old one. The engine emits `thought`, rolls 1–10 with `game.rng`, and emits `turn`; the player gets the floor if the roll ≤ urge.
    - Only if they got the floor, a `speak` call (whose task hands back their own thought from the first call) returns `speech` and `asks`, with no thought or notes. The engine emits `speech`, or a `fallback` if that call failed.
-   - Then `ready` if their readiness changed, on silent turns too.
+   - Then `lean` if their lean changed, and `ready` if their readiness changed, on silent turns too.
    - **Replies:** the players named in a heard speech's `asks` are asked next, first come first served. A reply uses up the asked player's turn this round, or is an extra turn if they already had it. After `max_replies_in_row` replies in a row, the queue is dropped and the round carries on.
    - **Skipped:** a player who has spoken `max_speeches` times today gets no more turns (and no calls).
    - **The end**, whichever comes first: a round with no speech (`quiet`); more than half the living players ready to vote, checked after every turn from round 2 and at the end of round 1 (`ready`); or `max_rounds` rounds, `day_turns_per_player` × living turns, or everyone out of speeches (`cap`). Then `discussion_end`.
-6. **Vote:** every living player votes in parallel. Then the `thought`s and `vote`s are emitted in seat order, followed by `vote_result`.
+6. **Defense before the vote:** count the living players' latest leans. If the top count is at least 2 and at most two players share it, emit `trial`, then each accused (in random order) gets a `defense` call (`trial: true`), outside the speech cap. Otherwise nothing happens.
+7. **Vote:** every living player votes in parallel. Then the `thought`s and `vote`s are emitted in seat order, followed by `vote_result`.
    - **On a tie:** the tied players give `defense`s, then there is a parallel runoff, which is also emitted as `vote` events with `runoff: true`, and a second `vote_result`.
-7. **Elimination:** `thought` + `last_words`, then `death`.
-8. **Win check.** After the day `max_days`, the game is a draw.
+8. **Elimination:** `thought` + `last_words`, then `death`.
+9. **Win check.** After the day `max_days`, the game is a draw.
 
 `game_over` is always the last event, unless `aborted` replaces it. The engine raises `GameAborted` after 3 consecutive decisions that fell back because of backend errors. It also raises it at once on a `BackendError` with `fatal=True`, which the Claude backend uses for "not logged in" and "usage limit reached": `Agent.execute` re-raises those without retrying.

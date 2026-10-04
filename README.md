@@ -97,8 +97,8 @@ that wins the floor costs a second call to write the speech. A day's discussion 
 call per living player (when everyone is quiet, or most are ready to vote after round 1); the turn
 cap of five turns per living player bounds it at the other end, so a calm day costs much less than
 a heated one. On top
-of that, each day has one vote per living player, and each night one call each for the wolves,
-the Doctor and the Sheriff.
+of that, each day usually has one defense before the vote (two when the leans are tied), one vote
+per living player, and each night one call each for the wolves, the Doctor and the Sheriff.
 
 The timings below were measured before the current discussion system, with two fixed rounds
 (two calls per living player per day); expect games to vary more now, and heated days to cost more.
@@ -131,13 +131,19 @@ stops. The log up to that point is kept.
   the wolves' chat, and no agent ever sees another agent's thoughts.
 - **Replies are structured JSON.** Each call passes a JSON schema, and the agent answers with fields
   such as `thought`, `speech`, `target` and `notes`. A discussion turn has two steps. First the
-  agent thinks and returns an `urge` from 0 to 10 and whether it is `ready_to_vote`, with no speech.
+  agent thinks and returns an `urge` from 0 to 10, whether it is `ready_to_vote`, and its public
+  `lean` (whom it would vote for right now), with no speech.
   Then the engine rolls the dice, and only a player who gets the floor is asked for the speech (and
   whom it `asks`), with its own thought handed back so the speech follows its plan. In god view
   you see every thought, score and roll; in public view, only what was said. Targets are limited to an `enum` of the legal
   names, so an agent can't vote for a dead player or protect someone twice in a row. An invalid
   reply is retried twice and then replaced with a random legal move, marked `[fallback]`. The game
   stops if three decisions in a row fail because Claude itself is unavailable.
+- **Each role gets a playbook.** The system prompt coaches each role in concrete plays: the
+  Sheriff leans toward revealing early and asks the Doctor for protection, the Doctor thinks about
+  whom the wolves want dead and whom they expect it to protect, the wolves think about how a kill
+  or a vote will look once roles are revealed, and villagers ask who gained from each death. Night
+  actions and votes also ask the agent to look at the game from the other side first.
 - **Calls run in parallel where the rules allow.** Votes and night actions run in parallel (up to
   `--concurrency`). Discussion runs one speaker at a time, because each speech must hear the ones
   before it.

@@ -77,16 +77,22 @@ def make_events() -> list[Event]:
         ev("speech", 1, d, "PUBLIC-SPEECH Who attacked our Sheriff? Bram, I want answers, and I want them "
            "now, before the sun goes down and another one of us is dragged into the woods!",
            actor="Elena", round=1, reply_to=None, asks=["Bram"]),
+        ev("lean", 1, d, actor="Elena", target="Bram", round=1, tally={"Bram": 1}),
         thought(1, d, "Bram", "SECRET-THOUGHT Deflect onto Elena.", "discuss"),
         turn(1, "Bram", urge=10, roll=8, spoke=True, reply_to="Elena"),
         ev("speech", 1, d, "I was at the mill all night, ask anyone.", actor="Bram", round=1, reply_to="Elena",
            asks=[]),
         thought(1, d, "Finn", "SECRET-THOUGHT Better to watch for now.", "discuss"),
         turn(1, "Finn", urge=2, roll=9, spoke=False, ready=True),
+        ev("lean", 1, d, actor="Finn", target="Bram", round=1, tally={"Bram": 2}),
         ev("ready", 1, d, actor="Finn", ready=True, round=1, count=1, living=5),
         thought(1, d, "Dmitri", "SECRET-THOUGHT Nothing to add.", "discuss"),
         turn(2, "Dmitri", urge=0, roll=4, spoke=False),
         ev("discussion_end", 1, d, "A quiet moment falls over the village. Time to vote.", reason="quiet", round=2),
+        ev("trial", 1, d, "TRIAL-TEXT The village turns to Bram: 2 of 5 lean toward voting them out.", target="Bram",
+           accused=["Bram"], tally={"Bram": 2}),
+        thought(1, d, "Bram", "SECRET-THOUGHT Time for a bold claim.", "defense"),
+        ev("defense", 1, d, "TRIAL-DEFENSE I am the Doctor, and I saved Elena.", actor="Bram", trial=True),
         ev("fallback", 1, d, "FALLBACK-TEXT Finn's reply was invalid twice; a random vote was cast.",
            actor="Finn", visible_to=SPECTATOR),
         thought(1, d, "Alice", "SECRET-THOUGHT Elena is an easy target.", "vote"),
@@ -131,12 +137,15 @@ def test_god_view_shows_secrets():
                    "The pack will attack", "WOLF", "Clara was killed", "Defense:", "Last words:",
                    "THE WEREWOLVES WIN", "runoff", "Discussion · round 1", "Discussion · round 2",
                    "🙋 7/10 · rolled 3", "🙋 10/10 · ↩ answers Elena", "🤐 2/10 · rolled 9 · stays quiet",
-                   "🤐 0/10 · stays quiet", "Finn is ready to vote", "(1 of 5 ready)", "A quiet moment falls"):
+                   "🤐 0/10 · stays quiet", "Finn is ready to vote", "(1 of 5 ready)", "A quiet moment falls",
+                   "👉 Finn leans toward Bram", "(Bram 2)", "Defense before the vote", "TRIAL-TEXT", "defends",
+                   "TRIAL-DEFENSE", "Tie · defenses"):
         assert needle in out, needle
     assert "NOTES-" not in out  # notes only with show_notes
     # the thought is printed right before its action, and the score between them
     assert out.index("Somebody here is lying") < out.index("7/10") < out.index("PUBLIC-SPEECH")
-    assert out.index("Better to watch") < out.index("2/10") < out.index("Finn is ready")
+    assert out.index("Better to watch") < out.index("2/10") < out.index("Finn leans") < out.index("Finn is ready")
+    assert out.index("TRIAL-TEXT") < out.index("bold claim") < out.index("TRIAL-DEFENSE") < out.index("Tie · defenses")
 
 
 def test_public_view_hides_secrets():
@@ -146,7 +155,8 @@ def test_public_view_hides_secrets():
         assert secret not in out, secret
     for public in ("PUBLIC-SPEECH", "LAST-WORDS", "Clara was killed", "Elena is eliminated",
                    "THE WEREWOLVES WIN", "Personality", "Night 1 falls", "↩ answers Elena",
-                   "Finn is ready to vote", "Discussion · round 1", "A quiet moment falls"):
+                   "Finn is ready to vote", "Discussion · round 1", "A quiet moment falls",
+                   "Elena leans toward Bram", "TRIAL-TEXT", "TRIAL-DEFENSE"):
         assert public in out, public
     before_end = out.split("THE WEREWOLVES WIN")[0]
     assert "Alice 🐺" not in before_end and "Bram 🐺" not in before_end
@@ -317,8 +327,11 @@ def test_markdown_transcript(tmp_path):
                    "**Bram** 🐺 *(Joker)* · 🙋 10/10 · ↩ *answers Elena*: I was at the mill",
                    "*🤐 2/10 (rolled 9) · Finn stays quiet.*", "*✋ Finn is ready to vote (1 of 5 ready).*",
                    "Discussion · round 2", "**🔔 A quiet moment falls over the village. Time to vote.**",
-                   "discussion of up to 4 rounds a day, 4 speeches per player"):
+                   "discussion of up to 4 rounds a day, 4 speeches per player",
+                   "*👉 Finn leans toward Bram (Bram 2).*", "**🎯 Defense before the vote**", "**TRIAL-TEXT",
+                   "**Bram** 🐺 *(defense)*: TRIAL-DEFENSE", "**🛡️ Tie · defenses**"):
         assert needle in md, needle
+    assert md.index("TRIAL-DEFENSE") < md.index("Tie · defenses")
 
 
 def test_logger_name_collision(tmp_path, monkeypatch):
