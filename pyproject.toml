@@ -3,10 +3,13 @@ name = "wolf"
 version = "0.1.0"
 description = "AI Werewolf: Claude agents play Werewolf in your terminal"
 requires-python = ">=3.12"
-dependencies = ["rich>=13"]
+dependencies = ["rich>=15"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["wolf*"]  # games/ and docs/ sit beside wolf/ and aren't packages
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
